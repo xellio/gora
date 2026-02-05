@@ -77,7 +77,7 @@ func generateFromSinglePrompt(ctx context.Context, store *redisvector.Store, mem
 		fmt.Fprintf(&contextBuilder, "Document section %d:\n%s\n\n", i+1, doc.PageContent)
 	}
 	fullContext := contextBuilder.String()
-	debugLog(fmt.Sprintf("Content passed to gpt: %s", fullContext))
+	debugLog(fmt.Sprintf("Content passed to LLM: %s", fullContext))
 
 	history, err := formatHistory(ctx, memory)
 	if err != nil {
@@ -144,6 +144,6 @@ func formatHistory(ctx context.Context, memory *memory.ConversationBuffer) (stri
 
 func debugLog(message string) {
 	if cfg.Settings.Debug {
-		log.Println(message)
+		log.Printf("+++++++++++\n%s\n===========", message)
 	}
 }
