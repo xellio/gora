@@ -8,18 +8,25 @@ import (
 	"github.com/tmc/langchaingo/schema"
 	"github.com/tmc/langchaingo/textsplitter"
 	"github.com/tmc/langchaingo/vectorstores/redisvector"
+	"github.com/xellio/gora/pkg/config"
 	"github.com/xellio/gora/pkg/store"
 )
 
-var dataRoot = "data"
-var indexName = "gora-doc"
-var chunkSize = 800
-var chunkOverlap = 50
+var cfg *config.Config
 
 func main() {
+
+	cfg, err := config.LoadConfig("config.yml")
+	if err != nil {
+		if cfg == nil {
+			log.Fatal(err)
+		}
+		log.Println("Using default configuration")
+	}
+
 	ctx := context.Background()
 
-	store, err := store.LoadStore(ctx, indexName)
+	store, err := store.LoadStore(ctx, cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -31,7 +38,7 @@ func main() {
 }
 
 func setupDatabase(ctx context.Context, store *redisvector.Store) error {
-	files, err := findDataFiles(dataRoot)
+	files, err := findDataFiles(cfg.Settings.DataRootPath)
 	if err != nil {
 		return err
 	}
@@ -68,8 +75,8 @@ func populateDatabase(ctx context.Context, store *redisvector.Store, documentPat
 	}
 
 	splitter := textsplitter.NewRecursiveCharacter()
-	splitter.ChunkSize = chunkSize
-	splitter.ChunkOverlap = chunkOverlap
+	splitter.ChunkSize = cfg.Settings.RedisChunkSize
+	splitter.ChunkOverlap = cfg.Settings.RedisChunkOverlap
 
 	chunks, err := splitter.SplitText(string(content))
 	if err != nil {

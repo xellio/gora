@@ -1,0 +1,11 @@
+config:
+  ollama_url: 'http://127.0.0.1:11434'
+  ollama_model_embed: 'nomic-embed-text'
+  ollama_model: 'gpt-oss:20b'
+  redis_url: 'redis://localhost:6379'
+  redis_index_name: 'gora-doc'
+  redis_chunk_size: 500
+  redis_chunk_overlap: 50
+  data_root_path: 'data/'
+  debug: false
+  max_history_messages: 10

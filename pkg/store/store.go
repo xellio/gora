@@ -6,16 +6,13 @@ import (
 	"github.com/tmc/langchaingo/embeddings"
 	"github.com/tmc/langchaingo/llms/ollama"
 	"github.com/tmc/langchaingo/vectorstores/redisvector"
+	"github.com/xellio/gora/pkg/config"
 )
 
-var ollamaModel = "nomic-embed-text"
-var ollamaURL = "http://127.0.0.1:11434"
-var redisURL = "redis://localhost:6379"
-
-func LoadStore(ctx context.Context, indexName string) (*redisvector.Store, error) {
+func LoadStore(ctx context.Context, cfg *config.Config) (*redisvector.Store, error) {
 	llm, err := ollama.New(
-		ollama.WithModel(ollamaModel),
-		ollama.WithServerURL(ollamaURL),
+		ollama.WithModel(cfg.Settings.OllamaModelEmbed),
+		ollama.WithServerURL(cfg.Settings.OllamaURL),
 	)
 	if err != nil {
 		return nil, err
@@ -28,8 +25,8 @@ func LoadStore(ctx context.Context, indexName string) (*redisvector.Store, error
 
 	return redisvector.New(
 		ctx,
-		redisvector.WithConnectionURL(redisURL),
-		redisvector.WithIndexName(indexName, true),
+		redisvector.WithConnectionURL(cfg.Settings.RedisURL),
+		redisvector.WithIndexName(cfg.Settings.RedisIndexName, true),
 		redisvector.WithEmbedder(e),
 	)
 }

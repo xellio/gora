@@ -11,19 +11,26 @@ import (
 	"github.com/tmc/langchaingo/llms/ollama"
 	"github.com/tmc/langchaingo/memory"
 	"github.com/tmc/langchaingo/vectorstores/redisvector"
+	"github.com/xellio/gora/pkg/config"
 	"github.com/xellio/gora/pkg/store"
 )
 
-var debugFlag = true
-var indexName = "gora-doc"
-var ollamaUserFacingModel = "gpt-oss:20b"
-var ollamaURL = "http://127.0.0.1:11434"
-var maxHistoryMessages = 10
+var cfg *config.Config
 
 func main() {
+
+	var err error
+	cfg, err = config.LoadConfig("config.yml")
+	if err != nil {
+		if cfg == nil {
+			log.Fatal(err)
+		}
+		log.Println("Using default configuration")
+	}
+
 	ctx := context.Background()
 
-	store, err := store.LoadStore(ctx, indexName)
+	store, err := store.LoadStore(ctx, cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -77,18 +84,21 @@ func generateFromSinglePrompt(ctx context.Context, store *redisvector.Store, mem
 		debugLog(err.Error())
 	}
 
-	finalPrompt := fmt.Sprintf(`You are a highly skilled technical assistant for our API documentation.
+	finalPrompt := fmt.Sprintf(`You are a professional technical support assistant.
+Your goal is to provide accurate answers based EXCLUSIVELY on the provided documentation.
 
-### CONTEXTUAL GUIDELINES:
-1. Use the CHAT HISTORY below to understand the context of the current question (e.g., resolving pronouns like "it", "this", or "that").
-2. Use the PROVIDED DOCUMENTATION to find the factual answer.
-3. If the answer is not contained within the documentation, state that you do not have enough information.
-4. IMPORTANT: Always respond in the SAME LANGUAGE as the user's current question (e.g., if the user asks in German, answer in German).
+### STRICT OPERATING RULES:
+1. USE the CHAT HISTORY only to resolve references (like "it", "this", or "that").
+2. USE ONLY the facts found in the RELEVANT DOCUMENTATION.
+3. DO NOT HALLUCINATE: Do not invent phone numbers, URLs, email addresses, or page numbers. If it's not in the text, it doesn't exist.
+4. If the documentation does not contain the answer, explicitly state: "I'm sorry, but I don't have information about that in the current documentation."
+5. DO NOT use your internal general knowledge to fill gaps.
+6. LANGUAGE: Always respond in the SAME LANGUAGE as the user's current question.
 
 ### CHAT HISTORY:
 %s
 
-### RELEVANT DOCUMENTATION:
+### RELEVANT DOCUMENTATION (ENGLISH):
 %s
 
 ### CURRENT USER QUESTION:
@@ -97,8 +107,8 @@ func generateFromSinglePrompt(ctx context.Context, store *redisvector.Store, mem
 ### YOUR RESPONSE:`, history, fullContext, query)
 
 	llm, err := ollama.New(
-		ollama.WithModel(ollamaUserFacingModel),
-		ollama.WithServerURL(ollamaURL),
+		ollama.WithModel(cfg.Settings.OllamaModel),
+		ollama.WithServerURL(cfg.Settings.OllamaURL),
 	)
 	if err != nil {
 		log.Fatalf("Connection to ollama failed: %v", err)
@@ -120,8 +130,8 @@ func formatHistory(ctx context.Context, memory *memory.ConversationBuffer) (stri
 		return "", err
 	}
 
-	if len(messages) > maxHistoryMessages {
-		messages = messages[len(messages)-maxHistoryMessages:]
+	if len(messages) > cfg.Settings.MaxHistoryMessages {
+		messages = messages[len(messages)-cfg.Settings.MaxHistoryMessages:]
 	}
 
 	// format conversation history
@@ -133,7 +143,7 @@ func formatHistory(ctx context.Context, memory *memory.ConversationBuffer) (stri
 }
 
 func debugLog(message string) {
-	if debugFlag {
+	if cfg.Settings.Debug {
 		log.Println(message)
 	}
 }

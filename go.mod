@@ -2,7 +2,10 @@ module github.com/xellio/gora
 
 go 1.25.3
 
-require github.com/tmc/langchaingo v0.1.14
+require (
+	github.com/tmc/langchaingo v0.1.14
+	gopkg.in/yaml.v2 v2.4.0
+)
 
 require (
 	github.com/dlclark/regexp2 v1.10.0 // indirect
@@ -16,6 +19,5 @@ require (
 	gitlab.com/golang-commonmark/puny v0.0.0-20191124015043-9f83538fa04f // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
