@@ -13,6 +13,8 @@ import (
 
 var dataRoot = "data"
 var indexName = "gora-doc"
+var chunkSize = 800
+var chunkOverlap = 50
 
 func main() {
 	ctx := context.Background()
@@ -51,7 +53,7 @@ func findDataFiles(path string) ([]string, error) {
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() && entry.Name() != ".gitkeep" {
 			files = append(files, path+"/"+entry.Name())
 		}
 	}
@@ -66,8 +68,8 @@ func populateDatabase(ctx context.Context, store *redisvector.Store, documentPat
 	}
 
 	splitter := textsplitter.NewRecursiveCharacter()
-	splitter.ChunkSize = 300
-	splitter.ChunkOverlap = 30
+	splitter.ChunkSize = chunkSize
+	splitter.ChunkOverlap = chunkOverlap
 
 	chunks, err := splitter.SplitText(string(content))
 	if err != nil {
