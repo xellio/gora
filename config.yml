@@ -7,5 +7,5 @@ config:
   redis_chunk_size: 800
   redis_chunk_overlap: 50
   data_root_path: 'data'
-  debug: true
+  debug: false
   max_history_messages: 3
