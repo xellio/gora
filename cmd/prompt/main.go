@@ -1,13 +1,15 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/tmc/langchaingo/llms/ollama"
 	"github.com/tmc/langchaingo/memory"
 	"github.com/tmc/langchaingo/vectorstores/redisvector"
@@ -17,6 +19,137 @@ import (
 
 var cfg *config.Config
 
+// UI styles
+var (
+	roleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+	aiStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	headerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true).Margin(1)
+)
+
+type model struct {
+	store      *redisvector.Store
+	memory     *memory.ConversationBuffer
+	cfg        *config.Config
+	textInput  textinput.Model
+	spinner    spinner.Model
+	loading    bool
+	lastResult string
+	err        error
+}
+
+type responseMsg string
+type errMsg error
+
+func initialModel(s *redisvector.Store, m *memory.ConversationBuffer, c *config.Config) model {
+	ti := textinput.New()
+	ti.Placeholder = "Ask me something about the documentation..."
+	ti.Focus()
+
+	smp := spinner.New()
+	smp.Spinner = spinner.Dot
+	smp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
+	return model{
+		store:     s,
+		memory:    m,
+		cfg:       c,
+		textInput: ti,
+		spinner:   smp,
+	}
+}
+
+func (m model) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+func (m model) askLLM(query string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		resp, err := generateFromSinglePrompt(ctx, m.store, m.memory, query)
+		if err != nil {
+			return errMsg(err)
+		}
+		m.memory.ChatHistory.AddUserMessage(ctx, query)
+		m.memory.ChatHistory.AddAIMessage(ctx, resp)
+
+		return responseMsg(resp)
+	}
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "esc", "quit":
+			return m, tea.Quit
+		case "enter":
+			if m.textInput.Value() != "" && !m.loading {
+				query := m.textInput.Value()
+				m.loading = true
+				m.textInput.Reset()
+				return m, tea.Batch(m.spinner.Tick, m.askLLM(query))
+			}
+		}
+
+	case responseMsg:
+		m.loading = false
+		m.lastResult = string(msg)
+		return m, nil
+
+	case errMsg:
+		m.loading = false
+		m.err = msg
+		return m, nil
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+	}
+
+	m.textInput, cmd = m.textInput.Update(msg)
+	return m, cmd
+}
+
+func (m model) View() string {
+	var s strings.Builder
+
+	s.WriteString(headerStyle.Render("GoRa - Technical Documentation Assistant"))
+	s.WriteString("\n\n")
+
+	if m.lastResult != "" {
+		s.WriteString(roleStyle.Render("GoRa: "))
+		s.WriteString(aiStyle.Render(m.lastResult))
+		s.WriteString("\n\n")
+	}
+
+	if m.loading {
+		s.WriteString(m.spinner.View() + " Thinking...")
+	} else {
+		s.WriteString(m.textInput.View())
+	}
+
+	s.WriteString("\n\n(esc to quit)\n")
+
+	return s.String()
+}
+
+func main() {
+	// ... dein Config Load & Store Load wie gehabt ...
+	cfg, _ = config.LoadConfig("config.yml")
+	ctx := context.Background()
+	s, _ := store.LoadStore(ctx, cfg)
+	mem := memory.NewConversationBuffer()
+
+	p := tea.NewProgram(initialModel(s, mem, cfg))
+	if _, err := p.Run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+/*
 func main() {
 
 	var err error
@@ -62,6 +195,7 @@ func main() {
 		fmt.Printf("GoRa: %v\n", response)
 	}
 }
+*/
 
 func generateFromSinglePrompt(ctx context.Context, store *redisvector.Store, memory *memory.ConversationBuffer, query string) (string, error) {
 
@@ -74,7 +208,7 @@ func generateFromSinglePrompt(ctx context.Context, store *redisvector.Store, mem
 
 	var contextBuilder strings.Builder
 	for i, doc := range results {
-		fmt.Println(doc.Score)
+		//fmt.Println(doc.Score)
 		fmt.Fprintf(&contextBuilder, "Document section %d:\n%s\n\n", i+1, doc.PageContent)
 	}
 	fullContext := contextBuilder.String()
