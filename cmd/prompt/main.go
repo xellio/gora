@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/ollama"
 	"github.com/tmc/langchaingo/memory"
 	"github.com/tmc/langchaingo/vectorstores/redisvector"
@@ -18,6 +19,7 @@ import (
 )
 
 var cfg *config.Config
+var globalProgramPtr *tea.Program
 
 // UI styles
 var (
@@ -35,8 +37,10 @@ type model struct {
 	loading    bool
 	lastResult string
 	err        error
+	fullAnswer string
 }
 
+type tokenMsg string
 type responseMsg string
 type errMsg error
 
@@ -80,7 +84,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+	case tokenMsg:
+		m.lastResult += string(msg)
+		return m, nil
+	case responseMsg:
+		m.loading = false
+		m.memory.ChatHistory.AddAIMessage(context.Background(), m.lastResult)
+		return m, nil
+
 	case tea.KeyMsg:
+		if msg.String() == "enter" && !m.loading {
+			m.lastResult = ""
+			m.loading = true
+			query := m.textInput.Value()
+			m.textInput.Reset()
+			m.memory.ChatHistory.AddUserMessage(context.Background(), query)
+
+			return m, m.streamLLM(query, *globalProgramPtr)
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "esc", "quit":
 			return m, tea.Quit
@@ -92,11 +114,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(m.spinner.Tick, m.askLLM(query))
 			}
 		}
-
-	case responseMsg:
-		m.loading = false
-		m.lastResult = string(msg)
-		return m, nil
 
 	case errMsg:
 		m.loading = false
@@ -143,61 +160,13 @@ func main() {
 	s, _ := store.LoadStore(ctx, cfg)
 	mem := memory.NewConversationBuffer()
 
-	p := tea.NewProgram(initialModel(s, mem, cfg))
-	if _, err := p.Run(); err != nil {
+	globalProgramPtr = tea.NewProgram(initialModel(s, mem, cfg))
+	if _, err := globalProgramPtr.Run(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-/*
-func main() {
-
-	var err error
-	cfg, err = config.LoadConfig("config.yml")
-	if err != nil {
-		if cfg == nil {
-			log.Fatal(err)
-		}
-		log.Println("Using default configuration")
-	}
-
-	ctx := context.Background()
-
-	store, err := store.LoadStore(ctx, cfg)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	chatMemory := memory.NewConversationBuffer()
-
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Println("GoRa started - Type 'quit' to exit")
-	fmt.Println(strings.Repeat("-", 40))
-
-	for {
-		fmt.Print("You: ")
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(input)
-
-		if input == "quit" {
-			break
-		}
-
-		response, err := generateFromSinglePrompt(ctx, store, chatMemory, input)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		//save input and response to memory
-		chatMemory.ChatHistory.AddUserMessage(ctx, input)
-		chatMemory.ChatHistory.AddAIMessage(ctx, response)
-
-		fmt.Printf("GoRa: %v\n", response)
-	}
-}
-*/
-
-func generateFromSinglePrompt(ctx context.Context, store *redisvector.Store, memory *memory.ConversationBuffer, query string) (string, error) {
+func preparePrompt(ctx context.Context, store *redisvector.Store, memory *memory.ConversationBuffer, query string) string {
 
 	debugLog(fmt.Sprintf("Looking for: %s", query))
 
@@ -219,7 +188,7 @@ func generateFromSinglePrompt(ctx context.Context, store *redisvector.Store, mem
 		debugLog(err.Error())
 	}
 
-	finalPrompt := fmt.Sprintf(`You are a professional technical support assistant.
+	return fmt.Sprintf(`You are a professional technical support assistant.
 Your goal is to provide accurate answers based EXCLUSIVELY on the provided documentation.
 
 ### STRICT OPERATING RULES:
@@ -241,6 +210,38 @@ Your goal is to provide accurate answers based EXCLUSIVELY on the provided docum
 %s
 
 ### YOUR RESPONSE:`, history, fullContext, query)
+
+}
+
+func (m model) streamLLM(query string, p tea.Program) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		finalPrompt := preparePrompt(ctx, m.store, m.memory, query)
+		llm, err := ollama.New(
+			ollama.WithModel(m.cfg.Settings.OllamaModel),
+			ollama.WithServerURL(m.cfg.Settings.OllamaURL),
+		)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		_, err = llm.Call(ctx, finalPrompt,
+			llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
+				p.Send(tokenMsg(chunk))
+				return nil
+			}),
+		)
+
+		if err != nil {
+			return errMsg(err)
+		}
+		return responseMsg("finished")
+	}
+}
+
+func generateFromSinglePrompt(ctx context.Context, store *redisvector.Store, memory *memory.ConversationBuffer, query string) (string, error) {
+
+	finalPrompt := preparePrompt(ctx, store, memory, query)
 
 	llm, err := ollama.New(
 		ollama.WithModel(cfg.Settings.OllamaModel),
