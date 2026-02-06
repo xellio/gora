@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"regexp"
 	"strings"
 
+	"github.com/tmc/langchaingo/llms/ollama"
 	"github.com/tmc/langchaingo/schema"
 	"github.com/tmc/langchaingo/textsplitter"
 	"github.com/tmc/langchaingo/vectorstores/redisvector"
@@ -93,8 +95,14 @@ func populateDatabase(ctx context.Context, store *redisvector.Store, documentPat
 			continue
 		}
 
+		pageContent := chunk
+		questions := generateSyntheticQuestions(ctx, chunk)
+		if questions != "" {
+			pageContent = fmt.Sprintf("Questions: %s\n\nContent: %s", questions, chunk)
+		}
+
 		docs = append(docs, schema.Document{
-			PageContent: chunk,
+			PageContent: pageContent,
 			Metadata: map[string]any{
 				"source": documentPath,
 			},
@@ -107,6 +115,35 @@ func populateDatabase(ctx context.Context, store *redisvector.Store, documentPat
 	}
 
 	return nil
+}
+
+func generateSyntheticQuestions(ctx context.Context, input string) string {
+	prompt := fmt.Sprintf(`Analyze the following technical documentation chunk and generate 3 short,
+    diverse user questions that are answered by this text.
+    Respond ONLY with the questions, separated by semicolons.
+
+    TEXT:
+    %s
+
+    QUESTIONS:`, input)
+
+	llm, err := ollama.New(
+		ollama.WithModel(cfg.Settings.OllamaModel),
+		ollama.WithServerURL(cfg.Settings.OllamaURL),
+	)
+	if err != nil {
+		log.Println(err.Error())
+		return ""
+	}
+
+	response, err := llm.Call(ctx, prompt)
+	if err != nil {
+		log.Println(err.Error())
+		return ""
+	}
+
+	log.Printf("Generated questions: %s\n", response)
+	return strings.TrimSpace(response)
 }
 
 func cleanText(input string) string {

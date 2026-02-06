@@ -74,6 +74,7 @@ func generateFromSinglePrompt(ctx context.Context, store *redisvector.Store, mem
 
 	var contextBuilder strings.Builder
 	for i, doc := range results {
+		fmt.Println(doc.Score)
 		fmt.Fprintf(&contextBuilder, "Document section %d:\n%s\n\n", i+1, doc.PageContent)
 	}
 	fullContext := contextBuilder.String()
@@ -89,11 +90,12 @@ Your goal is to provide accurate answers based EXCLUSIVELY on the provided docum
 
 ### STRICT OPERATING RULES:
 1. USE the CHAT HISTORY only to resolve references (like "it", "this", or "that").
-2. USE ONLY the facts found in the RELEVANT DOCUMENTATION.
+2. USE ONLY the facts found in the "Content" sections of the RELEVANT DOCUMENTATION.
 3. DO NOT HALLUCINATE: Do not invent phone numbers, URLs, email addresses, or page numbers. If it's not in the text, it doesn't exist.
 4. If the documentation does not contain the answer, explicitly state: "I'm sorry, but I don't have information about that in the current documentation."
 5. DO NOT use your internal general knowledge to fill gaps.
 6. LANGUAGE: Always respond in the SAME LANGUAGE as the user's current question.
+7. STRUCTURE NOTE: The documentation chunks may contain a "Questions" section followed by a "Content" section. Use the questions as context to understand the intent, but derive your answer ONLY from the "Content".
 
 ### CHAT HISTORY:
 %s
