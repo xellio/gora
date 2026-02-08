@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/tmc/langchaingo/embeddings"
 	"github.com/tmc/langchaingo/llms/ollama"
@@ -23,10 +24,15 @@ func LoadStore(ctx context.Context, cfg *config.Config) (*redisvector.Store, err
 		return nil, err
 	}
 
+	indexName := cfg.Settings.RedisIndexName
+	if cfg.Settings.AppendEmbedModelNameToIndex {
+		indexName = fmt.Sprintf("%s_%s", indexName, cfg.Settings.OllamaModelEmbed)
+	}
+
 	return redisvector.New(
 		ctx,
 		redisvector.WithConnectionURL(cfg.Settings.RedisURL),
-		redisvector.WithIndexName(cfg.Settings.RedisIndexName, true),
+		redisvector.WithIndexName(indexName, true),
 		redisvector.WithEmbedder(e),
 	)
 }
