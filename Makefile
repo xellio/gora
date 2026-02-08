@@ -2,6 +2,10 @@ BINARY_NAME=gora
 SETUP_NAME=gora-setup
 BUILD_DIR=bin
 DOCKER_COMPOSE=docker-compose
+BACKUP_DIR=backups
+REDIS_CONTAINER=$(shell docker ps -qf "name=redis")
+REDIS_SERVICE=redis-vector
+DATE=$(shell date +%Y-%m-%d_%H%M)
 
 .PHONY: all build setup run clean help up down restart status
 
@@ -37,6 +41,25 @@ wipe:
 	@echo "Wiping Redis database..."
 	@docker exec -it $$(docker ps -qf "name=redis") redis-cli FLUSHALL
 	@echo "Redis is now empty and clean."
+
+backup:
+	@mkdir -p $(BACKUP_DIR)
+	@echo "Creating Redis snapshot..."
+	@docker exec -it $(REDIS_CONTAINER) redis-cli SAVE
+	@echo "Saving to $(BACKUP_DIR)/dump_$(DATE).rdb..."
+	@docker cp $(REDIS_CONTAINER):/data/dump.rdb $(BACKUP_DIR)/dump_$(DATE).rdb
+	@cp $(BACKUP_DIR)/dump_$(DATE).rdb $(BACKUP_DIR)/dump_latest.rdb
+	@echo "Backup complete: dump_$(DATE).rdb"
+
+restore:
+	@echo "Restoring from $(BACKUP_DIR)/dump_latest.rdb..."
+	@if [ ! -f $(BACKUP_DIR)/dump_latest.rdb ]; then echo "Error: No dump_latest.rdb found!"; exit 1; fi
+	@$(DOCKER_COMPOSE) stop $(REDIS_SERVICE)
+	@docker cp $(BACKUP_DIR)/dump_latest.rdb $(REDIS_CONTAINER):/data/dump.rdb
+	@$(DOCKER_COMPOSE) start $(REDIS_SERVICE)
+	@echo "Waiting for Redis to load data..."
+	@sleep 2
+	@echo "Restore complete!"
 
 run:
 	@echo "Starting GoRa CLI..."

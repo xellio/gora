@@ -51,6 +51,8 @@ make run
 | `make build` | Compiles binaries into the `/bin` directory |
 | `make status` | Shows the status of the docker containers |
 | `make wipe` | Deletes all data and indexes from Redis for a fresh start |
+| `make backup` | Creates a Redis snapshot and stores it in a backup/ directory |
+| `make restore` | Restores a Redis snapshot, located in the backup/ directory |
 | `make clean` | Removes compiled binaries and temporary files |
 
 ## Configuration
